@@ -17,9 +17,8 @@ class Gameplay(BaseState):
 
     def startup(self, persistent):
         super().startup(persistent)
-        self.diet = self.persist.get('diet', 'herbivore')
 
-        # Sprite groups
+        # Initialize sprite groups
         self.all_sprites = pygame.sprite.Group()
         self.plant_food_group = pygame.sprite.Group()
         self.prey_group = pygame.sprite.Group()
@@ -27,13 +26,6 @@ class Gameplay(BaseState):
         self.mate_group = pygame.sprite.Group()
         self.meteorite_group = pygame.sprite.Group()
         self.part_pickup_group = pygame.sprite.Group()
-
-        # Player
-        self.player = Player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, diet=self.diet)
-        self.all_sprites.add(self.player)
-
-        # Populate world
-        self.populate_world()
 
         # Timers
         self.meteor_spawn_timer = 0
@@ -43,6 +35,16 @@ class Gameplay(BaseState):
         self.growth_bar_max_width = 200
         self.growth_bar_height = 20
         self.growth_bar_rect = pygame.Rect(10, 10, 0, self.growth_bar_height)
+
+        # Load game or start new
+        loaded_data = self.persist.get('load_game_data')
+        if loaded_data:
+            self.load_state_from_data(loaded_data)
+        else:
+            self.diet = self.persist.get('diet', 'herbivore')
+            self.player = Player(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, diet=self.diet)
+            self.all_sprites.add(self.player)
+            self.populate_world()
 
         # Pre-generate sounds
         self.sounds = {
@@ -74,8 +76,9 @@ class Gameplay(BaseState):
             self.quit = True
         elif event.type == pygame.KEYUP:
             if event.key == pygame.K_ESCAPE:
+                self.persist['gameplay_state'] = self
                 self.done = True
-                self.next_state = "main_menu"
+                self.next_state = "pause_menu"
 
     def update(self, dt):
         self.background.update(dt)
@@ -158,3 +161,59 @@ class Gameplay(BaseState):
         # Draw UI
         pygame.draw.rect(surface, WHITE, (10, 10, self.growth_bar_max_width, self.growth_bar_height), 2)
         pygame.draw.rect(surface, GREEN, self.growth_bar_rect)
+
+    def load_state_from_data(self, data):
+        """Reconstructs the game state from a loaded dictionary."""
+        # Restore unlocked parts
+        for part in AVAILABLE_PARTS:
+            part.unlocked = part.name in data["unlocked_parts"]
+
+        # A map to recreate entities from their string name
+        entity_map = {
+            "Player": Player,
+            "AICell": AICell,
+            "PreyCell": PreyCell,
+            "MateCell": MateCell,
+            "PlantFood": PlantFood,
+            "Meteorite": Meteorite,
+            "PartPickup": PartPickup
+        }
+
+        for entity_data in data["entities"]:
+            entity_type_str = entity_data["__type__"]
+            pos = entity_data["pos"]
+
+            # Recreate the entity
+            entity_class = entity_map.get(entity_type_str)
+            if not entity_class:
+                continue
+
+            # Handle constructor arguments
+            if entity_type_str == "Player":
+                entity = entity_class(pos.x, pos.y, diet=entity_data["diet"])
+                entity.dna_points = entity_data["dna_points"]
+                # Re-attach parts
+                for part_name in entity_data["parts"]:
+                    part_obj = next((p for p in AVAILABLE_PARTS if p.name == part_name), None)
+                    if part_obj:
+                        entity.add_part(part_obj)
+                self.player = entity # Set the main player reference
+            elif entity_type_str == "PartPickup":
+                part_name = entity_data["part_name"]
+                part_obj = next((p for p in AVAILABLE_PARTS if p.name == part_name), None)
+                if part_obj:
+                    entity = entity_class(pos.x, pos.y, part=part_obj)
+                else: continue
+            else:
+                entity = entity_class(pos.x, pos.y)
+
+            # Add to appropriate sprite groups
+            self.all_sprites.add(entity)
+            if isinstance(entity, PlantFood): self.plant_food_group.add(entity)
+            elif isinstance(entity, PreyCell): self.prey_group.add(entity)
+            elif isinstance(entity, AICell): self.enemy_group.add(entity)
+            elif isinstance(entity, MateCell): self.mate_group.add(entity)
+            elif isinstance(entity, Meteorite): self.meteorite_group.add(entity)
+            elif isinstance(entity, PartPickup): self.part_pickup_group.add(entity)
+
+        print("Game state successfully loaded.")

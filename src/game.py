@@ -6,6 +6,8 @@ from src.states.main_menu import MainMenu
 from src.states.gameplay import Gameplay
 from src.states.cell_editor import CellEditor
 from src.states.win_screen import WinScreen
+from src.states.pause_menu import PauseMenu
+from src.states.diet_selection_menu import DietSelectionMenu
 
 class Game:
     def __init__(self):
@@ -17,9 +19,11 @@ class Game:
         self.state_machine = StateMachine()
         states = {
             "main_menu": MainMenu(),
+            "diet_selection_menu": DietSelectionMenu(),
             "gameplay": Gameplay(),
             "cell_editor": CellEditor(),
             "win_screen": WinScreen(),
+            "pause_menu": PauseMenu(),
         }
         self.state_machine.setup_states(states, "main_menu")
 
